@@ -1,62 +1,136 @@
 import utils
 
 
-def compare_content(data1, data2):
-    deleted = []
-    created = []
-    changed = []
+class BackupComparer(object):
+    def __init__(self, first_backup_path, second_backup_path, target_path):
+        self.paths = {
+            'first': first_backup_path,
+            'second': second_backup_path,
+            'target': target_path
+        }
 
-    id_dict1 = {item['id']: item for item in data1}
-    id_dict2 = {item['id']: item for item in data2}
+        self.all_ids = {
+            'first': set(),
+            'second': set()
+        }
 
-    ids1 = set(id_dict1.keys())
-    ids2 = set(id_dict2.keys())
+        self.deleted_ids = None
+        self.created_ids = None
+        self.other_ids = None
 
-    deleted_ids = ids1.difference(ids2)
-    created_ids = ids2.difference(ids1)
-    other_ids = ids1.intersection(ids2)
+        self.changes = {
+            'Deleted': [],
+            'Added': [],
+            'ChangedAttribute': []
+        }
 
-    for id in deleted_ids:
-        deleted.append({
-            'id': id,
-            'userType': id_dict1[id].get('userType')
-        })
+    def compare_and_save(self):
+        self.record_all_ids('first')
+        self.record_all_ids('second')
+        self.record_ids_by_categories()
 
-    for id in created_ids:
-        created.append({
-            'id': id,
-            'userType': id_dict1[id].get('userType')
-        })
+        self.process_deleted_ids()
+        self.process_created_ids()
+        self.process_other_ids()
 
-    for id in other_ids:
-        for key, value in id_dict1[id].items():
-            if value != id_dict2[id].get(key):
-                changed.append({
+        self.save_formatted_diff()
+
+    def all_datasets(self, number):
+        filenames = utils.all_filenames_in_path(self.paths[number])
+        for dirpath, filename in filenames:
+            yield utils.extract_gz_content('{}\\{}'.format(dirpath, filename)).get('value')
+
+    def record_all_ids(self, number):
+        for dataset in self.all_datasets(number):
+            self.add_ids_from_data(dataset, number)
+
+    def add_ids_from_data(self, data, number):
+        for item in data:
+            self.all_ids[number].add(item['id'])
+
+    def record_ids_by_categories(self):
+        self.deleted_ids = self.all_ids['first'].difference(self.all_ids['second'])
+        self.created_ids = self.all_ids['second'].difference(self.all_ids['first'])
+        self.other_ids = self.all_ids['first'].intersection(self.all_ids['second'])
+
+    def process_deleted_ids(self):
+        if not self.deleted_ids:
+            return
+
+        for dataset in self.all_datasets('first'):
+            for user in dataset:
+                if user.get('id') in self.deleted_ids:
+                    self.changes['Deleted'].append({
+                        'id': user.get('id'),
+                        'userType': user.get('userType')
+                    })
+
+    def process_created_ids(self):
+        if not self.created_ids:
+            return
+
+        for dataset in self.all_datasets('second'):
+            for user in dataset:
+                if user.get('id') in self.created_ids:
+                    self.changes['Added'].append({
+                        'id': user.get('id'),
+                        'userType': user.get('userType')
+                    })
+
+    def process_other_ids(self):
+        if not self.other_ids:
+            return
+
+        for first_dataset in self.all_datasets('first'):
+            first_id_dict = self.get_id_dict_from_dataset(first_dataset, self.other_ids)
+            for second_dataset in self.all_datasets('second'):
+                second_id_dict = self.get_id_dict_from_dataset(second_dataset, self.other_ids)
+                for id in self.other_ids:
+                    if id in first_id_dict and id in second_id_dict:
+                        self.changes['ChangedAttribute'].extend(self.compare_attributes(id, first_id_dict[id], second_id_dict[id]))
+
+    def get_id_dict_from_dataset(self, dataset, acceptable_ids=None):
+        result = {}
+        for item in dataset:
+            if acceptable_ids and item.get('id') in acceptable_ids:
+                result[item.get('id')] = item
+
+        return result
+
+    def compare_attributes(self, id, attrs1, attrs2):
+        result = []
+
+        for key, value1 in attrs1.items():
+            if key not in attrs2:
+                result.append({
                     "id": id,
                     "attribute": key,
-                    "oldValue": value,
-                    "newValue": id_dict2[id].get(key)
+                    "oldValue": value1,
+                    "newValue": None
+                })
+            elif value1 != attrs2[key]:
+                result.append({
+                    "id": id,
+                    "attribute": key,
+                    "oldValue": value1,
+                    "newValue": attrs2[key]
                 })
 
-    return {
-        "Deleted": deleted,
-        "Added": created,
-        "ChangedAttribute": changed
-    }
+        for key, value in attrs2.items():
+            if key not in attrs1:
+                result.append({
+                    "id": id,
+                    "attribute": key,
+                    "oldValue": None,
+                    "newValue": value
+                })
 
+        return result
 
-def save_diff(diff, path, subpath, gz_filename):
-    if subpath:
-        path += '\\' + subpath
-    utils.save_json_to_gz(diff, path, gz_filename)
+    def save_formatted_diff(self):
+        utils.save_json_to_gz(self.changes, self.paths['target'], 'change.gz')
 
 
 def compare(first_backup_path, second_backup_path, target_backup_path):
-    filenames=utils.all_filenames_in_path(first_backup_path)
-
-    for subpath, filename in filenames:
-        first_content = utils.extract_gz_content('{}\\{}\\{}'.format(first_backup_path, subpath, filename)).get('value')
-        second_content = utils.extract_gz_content('{}\\{}\\{}'.format(second_backup_path, subpath, filename)).get('value')
-
-        diff = compare_content(first_content, second_content)
-        save_diff(diff, target_backup_path, subpath, filename)
+    comparer = BackupComparer(first_backup_path, second_backup_path, target_backup_path)
+    comparer.compare_and_save()
