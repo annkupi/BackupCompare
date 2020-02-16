@@ -19,5 +19,5 @@ def save_json_to_gz(data, path, gz_filename):
     if not os.path.exists(path):
         os.makedirs(path)
 
-    with gzip.open(path + '\\' + gz_filename, 'wb') as f:
+    with gzip.open('{}\\{}'.format(path, gz_filename), 'wb') as f:
         json.dump(data, f)

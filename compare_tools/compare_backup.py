@@ -32,16 +32,16 @@ def compare_content(data1, data2):
         for key, value in id_dict1[id].items():
             if value != id_dict2[id].get(key):
                 changed.append({
-                    "id": id,
-                    "attribute": key,
-                    "oldValue": value,
-                    "newValue": id_dict2[id].get(key)
+                    'id': id,
+                    'attribute': key,
+                    'oldValue': value,
+                    'newValue': id_dict2[id].get(key)
                 })
 
     return {
-        "Deleted": deleted,
-        "Added": created,
-        "ChangedAttribute": changed
+        'Deleted': deleted,
+        'Added': created,
+        'ChangedAttribute': changed
     }
 
 
@@ -55,8 +55,9 @@ def compare(first_backup_path, second_backup_path, target_backup_path):
     filenames=utils.all_filenames_in_path(first_backup_path)
 
     for subpath, filename in filenames:
-        first_content = utils.extract_gz_content('{}\\{}\\{}'.format(first_backup_path, subpath, filename)).get('value')
-        second_content = utils.extract_gz_content('{}\\{}\\{}'.format(second_backup_path, subpath, filename)).get('value')
+        second_part_of_path = filename if not subpath else '{}\\{}'.format(subpath, filename)
+        first_content = utils.extract_gz_content('{}\\{}'.format(first_backup_path, second_part_of_path)).get('value')
+        second_content = utils.extract_gz_content('{}\\{}'.format(second_backup_path, second_part_of_path)).get('value')
 
         diff = compare_content(first_content, second_content)
         save_diff(diff, target_backup_path, subpath, filename)
