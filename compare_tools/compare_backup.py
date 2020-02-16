@@ -1,5 +1,6 @@
 import utils
 
+
 def compare_content(data1, data2):
     deleted = []
     created = []
@@ -43,26 +44,19 @@ def compare_content(data1, data2):
         "ChangedAttribute": changed
     }
 
+
 def save_diff(diff, path, subpath, gz_filename):
     if subpath:
         path += '\\' + subpath
-    utils.save_json_to_gz(diff, path, gz_filename, 'change.json')
+    utils.save_json_to_gz(diff, path, gz_filename)
+
 
 def compare(first_backup_path, second_backup_path, target_backup_path):
-    # debug
-    first_filenames=utils.all_filenames_in_path(first_backup_path)
-    second_filenames=utils.all_filenames_in_path(second_backup_path)
-    for first_subpath, first_filename in first_filenames:
-        second_subpath, second_filename = next(second_filenames)
+    filenames=utils.all_filenames_in_path(first_backup_path)
 
-        #debug, delete
-        print(first_filename)
-        print(second_filename)
-
-        first_content = utils.extract_gz_content(
-            utils.make_full_path(first_backup_path, first_subpath, first_filename)).get('value')
-        second_content = utils.extract_gz_content(
-            utils.make_full_path(second_backup_path, second_subpath, second_filename)).get('value')
+    for subpath, filename in filenames:
+        first_content = utils.extract_gz_content('{}\\{}\\{}'.format(first_backup_path, subpath, filename)).get('value')
+        second_content = utils.extract_gz_content('{}\\{}\\{}'.format(second_backup_path, subpath, filename)).get('value')
 
         diff = compare_content(first_content, second_content)
-        save_diff(diff, target_backup_path, first_subpath, first_filename)
+        save_diff(diff, target_backup_path, subpath, filename)
